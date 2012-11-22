@@ -1,5 +1,5 @@
-application: timetric-mail-rfc2822
-version: 1
+application: mixcloud-mailer
+version: 3-unicode
 runtime: python
 api_version: 1
 

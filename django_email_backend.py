@@ -3,6 +3,7 @@ from django.core.mail.backends.base import BaseEmailBackend
 
 from gmail import GmailProxy, MessageSendingFailure
 
+EMAIL_OVERRIDE = getattr(settings, 'EMAIL_OVERRIDE', None)
 
 class GmailBackend(BaseEmailBackend):
     def __init__(self, fail_silently=False, *args, **kwargs):
@@ -12,7 +13,11 @@ class GmailBackend(BaseEmailBackend):
     def send_messages(self, messages):
         n = 0
         for message in messages:
-            sent = self.gmail_proxy.send_mail(message.message())
-            if sent:
+            if settings.DEBUG and EMAIL_OVERRIDE:
+                message.to = EMAIL_OVERRIDE
+            try:
+                self.gmail_proxy.send_mail(message.message())
                 n += 1
+            except MessageSendingFailure:
+                pass
         return n

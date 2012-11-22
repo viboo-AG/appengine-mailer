@@ -28,16 +28,13 @@ class Mailer(object):
             message.send()
             return
         except InvalidSenderError:
-            errmsg = "Unauthorized message sender '%s'" % message.sender
             if not self.fix_sender:
-                raise BadMessageError(errmsg)
-            else:
-                logging.info(errmsg)
+                raise BadMessageError("Unauthorized message sender '%s'" % sender)
         message.sender = self.default_sender
         try:
             message.send()
         except InvalidSenderError:
-            raise BadMessageError("Unauthorized default message sender '%s'" % message.sender)
+            raise BadMessageError("Unauthorized default message sender '%s'" % sender)
 
     @staticmethod
     def get_filename(part):
@@ -94,7 +91,7 @@ class Mailer(object):
                 elif part.get_content_type() == 'text/html' and not html:
                     html = part.get_payload(decode=True)
                 elif not part.get_content_type().startswith('multipart'):
-                    attachments.append((self.get_filename(part), part.get_payload(decode=True)))
+                    attachments.append((get_filename(part), part.get_payload(decode=True)))
             if not body:
                 raise BadMessageError("No message body specified")
             message.body = body
@@ -127,17 +124,14 @@ class SendMail(RequestHandler):
             self.error(204)
         except BadRequestError, e:
             logging.error("Malformed request: %s" % e.args[0])
-            logging.error(str(self.request))
             self.error(400)
             self.response.out.write(e.args[0])
         except BadMessageError, e:
             logging.error("Failed to send message: %s" % e.args[0])
-            logging.error(str(self.request))
             self.error(400)
             self.response.out.write(e.args[0])
         except Exception, e:
             logging.exception("Failed to process request")
-            logging.error(str(self.request))
             self.error(500)
 
     def parse_args(self):
@@ -147,9 +141,9 @@ class SendMail(RequestHandler):
         signature = self.request.get('signature')
         if not signature:
             raise BadRequestError("No signature found")
+        msg = unicode(msg).encode('utf-8') # email.parser fails on unicode
         if not self.check_signature(msg, signature):
             raise BadRequestError("Signature doesn't match")
-        msg = str(msg) # email.parser fails on unicode
         fix_sender = bool(self.request.get("fix_sender"))
         return msg, fix_sender
 
