@@ -2,7 +2,7 @@
 
 from setuptools import setup, find_packages
 
-setup(name='appengine_mailer',
+setup(name='appengine-mailer',
       version='0.1',
       description='AppEngine Email Proxy',
       author='Mat Clayton',
