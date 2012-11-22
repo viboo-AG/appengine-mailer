@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from setuptools import setup, find_packages
-)
+
 setup(name='appengine_mailer',
       version='0.1',
       description='AppEngine Email Proxy',
