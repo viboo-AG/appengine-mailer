@@ -11,3 +11,11 @@ Summary of changes from the upstream version:
 * Replace deprecated APIs with current ones
 * Remove non-essential files and functionality
 * Get the signature key from a GCP secret whose name is passed in the `GMAIL_SECRET_NAME` environment variable
+
+## Deployment
+
+From the root of the repo
+
+```sh
+gcloud app deploy appengine_mailer/
+```
