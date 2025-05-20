@@ -1,0 +1,9 @@
+{
+    "python.autoComplete.extraPaths": [
+        "${workspaceFolder}/appengine_mailer",
+    ],
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/appengine_mailer",
+    ],
+    "python.analysis.typeCheckingMode": "basic",
+}

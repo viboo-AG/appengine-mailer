@@ -1,2 +1,3 @@
 *.pyc
 GMAIL_SECRET_KEYS
+.venv

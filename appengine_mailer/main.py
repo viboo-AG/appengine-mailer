@@ -1,14 +1,18 @@
-from google.appengine.ext.webapp import WSGIApplication
-from google.appengine.ext.webapp.util import run_wsgi_app
+from webapp2 import WSGIApplication
 
 from mail import SendMail
 
-application = WSGIApplication([('/', SendMail),
-                              ],
-                              debug=True)
+app = WSGIApplication(
+    [
+        ("/", SendMail),
+    ],
+    debug=True,
+)
+
 
 def main():
-    run_wsgi_app(application)
+    app.run()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

@@ -1,9 +1,6 @@
-application: mixcloud-mailer
-version: 3-unicode
-runtime: python
-api_version: 1
+runtime: python311
+app_engine_apis: true
 
 handlers:
-
-- url: .*
-  script: main.py
+  - url: .*
+    script: main.py
