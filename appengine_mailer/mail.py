@@ -17,7 +17,7 @@ GMAIL_SECRET_NAME = (
     f"secrets/{os.environ['GMAIL_SECRET_NAME']}/versions/latest"
 )
 
-DEFAULT_SENDER = f"{os.environ['GOOGLE_CLOUD_PROJECT']}@appspot.gserviceaccount.com"
+DEFAULT_SENDER = f"noreply@{os.environ['GOOGLE_CLOUD_PROJECT']}.appspotmail.com"
 
 suffixes = dict(
     line.split()[:2]
@@ -71,7 +71,7 @@ class Mailer(object):
         return filename
 
     def translate_message(self, msg: Message):
-        sender = msg.get_unixfrom() or msg["From"]
+        sender = msg["From"] or DEFAULT_SENDER
         if not sender:
             if self.fix_sender:
                 sender = self.default_sender
