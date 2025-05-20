@@ -1,15 +1,23 @@
 from email.message import Message
 import email.parser
 import logging
-
+import os
 from gmail import Signer
 from google.appengine.api.mail import (  # type:ignore[import-untyped]
     EmailMessage,
     InvalidSenderError,
 )
-from google.cloud import secretmanager
+from google.cloud.secretmanager_v1 import SecretManagerServiceClient
+from google.cloud.secretmanager_v1.types import AccessSecretVersionRequest
 
 from webapp2 import RequestHandler  # type:ignore[import-untyped]
+
+GMAIL_SECRET_NAME = (
+    f"projects/{os.environ['GOOGLE_CLOUD_PROJECT']}/"
+    f"secrets/{os.environ['GMAIL_SECRET_NAME']}/versions/latest"
+)
+
+DEFAULT_SENDER = f"{os.environ['GOOGLE_CLOUD_PROJECT']}@appspot.gserviceaccount.com"
 
 suffixes = dict(
     line.split()[:2]
@@ -27,7 +35,7 @@ class BadMessageError(ValueError):
 
 
 class Mailer(object):
-    def __init__(self, default_sender, fix_sender=False):
+    def __init__(self, default_sender=DEFAULT_SENDER, fix_sender=False):
         self.default_sender = default_sender
         self.fix_sender = fix_sender
 
@@ -121,8 +129,11 @@ class Mailer(object):
 
 class SendMail(RequestHandler):
     def __init__(self, *args, **kwargs):
-        self.GMAIL_SECRET_KEYS = [k.strip() for k in open("GMAIL_SECRET_KEYS") if k]
-        self.default_sender = open("GMAIL_DEFAULT_SENDER").read().strip()
+        self.GMAIL_SECRET_KEYS = [
+            SecretManagerServiceClient()
+            .access_secret_version(AccessSecretVersionRequest(name=GMAIL_SECRET_NAME))
+            .payload.data.decode()
+        ]
         super(SendMail, self).__init__(*args, **kwargs)
 
     def get(self):
@@ -134,16 +145,16 @@ class SendMail(RequestHandler):
         try:
             msg_string, fix_sender = self.parse_args()
             msg: Message = email.parser.Parser().parsestr(msg_string)
-            mailer = Mailer(self.default_sender, fix_sender)
+            mailer = Mailer(fix_sender=fix_sender)
             mailer.send_message(msg)
-            logging.info("Sent message ok\n%s" % msg)
+            logging.info("Sent message ok\n%s", msg)
             self.error(204)
         except BadRequestError as e:
-            logging.error("Malformed request: 044 320 08 24%s" % e.args[0])
+            logging.error("Malformed request: %s", e.args[0])
             self.error(400)
             self.response.out.write(e.args[0])
         except BadMessageError as e:
-            logging.error("Failed to send message: %s" % e.args[0])
+            logging.error("Failed to send message: %s", e.args[0])
             self.error(400)
             self.response.out.write(e.args[0])
         except Exception as e:
@@ -163,5 +174,5 @@ class SendMail(RequestHandler):
         fix_sender = bool(self.request.get("fix_sender"))
         return msg, fix_sender
 
-    def check_signature(self, msg, signature):
+    def check_signature(self, msg, signature: str):
         return Signer(self.GMAIL_SECRET_KEYS).verify_signature(msg, signature)

@@ -1,4 +1,5 @@
 from webapp2 import WSGIApplication
+from google.appengine.api import wrap_wsgi_app
 
 from mail import SendMail
 
@@ -9,10 +10,4 @@ app = WSGIApplication(
     debug=True,
 )
 
-
-def main():
-    app.run()
-
-
-if __name__ == "__main__":
-    main()
+app = wrap_wsgi_app(app)

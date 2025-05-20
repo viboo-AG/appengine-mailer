@@ -1,3 +1,6 @@
 appengine-python-standard>=1.0.0
 google-cloud-secret-manager~=2.20
+requests~=2.32.3
+types-google-cloud-ndb~=2.3.0
+types-requests~=2.31.0
 webapp2==3.0.0b1

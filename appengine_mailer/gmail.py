@@ -5,11 +5,14 @@ import email.message
 import email.parser
 import hashlib
 import hmac
-import optparse # pylint: disable=deprecated-module
+import logging
+import optparse  # pylint: disable=deprecated-module
 import os
 import sys
-import urllib.parse
-import urllib.request
+import requests
+
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger(__name__)
 
 
 class MessageSendingFailure(Exception):
@@ -24,22 +27,29 @@ class Signer(object):
             except KeyError:
                 try:
                     SECRET_KEYS = [
-                        open("/etc/envdir/GMAIL_SECRET_KEY",encoding="utf-8").readline().rstrip()
+                        open("/etc/envdir/GMAIL_SECRET_KEY", encoding="utf-8")
+                        .readline()
+                        .rstrip()
                     ]
                 except OSError as e:
                     raise EnvironmentError("GMAIL_SECRET_KEY is not set.") from e
         self.SECRET_KEYS = SECRET_KEYS
 
     @staticmethod
-    def sign(msg, key):
-        return base64.encodebytes(hmac.new(key, msg, hashlib.sha1).digest()).strip()
+    def sign(msg: str, key: str):
+        signature = base64.encodebytes(
+            hmac.new(bytes(key, "utf-8"), bytes(msg, "utf-8"), hashlib.sha1).digest()
+        ).strip()
+        log.debug(f"message: '{msg}'")
+        log.debug(f"signature: '{signature!r}'")
+        return signature
 
-    def generate_signature(self, msg):
+    def generate_signature(self, msg: str):
         return self.sign(msg, self.SECRET_KEYS[0])
 
-    def verify_signature(self, msg, signature):
+    def verify_signature(self, msg, signature: str):
         for key in self.SECRET_KEYS:
-            if self.sign(msg, key) == signature:
+            if self.sign(msg, key) == bytes(signature, "utf-8"):
                 return True
         return False
 
@@ -59,19 +69,18 @@ class Connection(object):
         self.EMAIL_APPENGINE_PROXY_URL = EMAIL_APPENGINE_PROXY_URL
 
     def make_request(self, data):
-        response = urllib.request.urlopen(self.EMAIL_APPENGINE_PROXY_URL, data=data)
-        return response.getcode(), response.read()
+        response = requests.post(self.EMAIL_APPENGINE_PROXY_URL, data)
+        return response.status_code, response.text
 
 
 class GmailProxy(object):
     def __init__(
         self,
-        SECRET_KEY=None,
         EMAIL_APPENGINE_PROXY_URL=None,
         fix_sender=False,
         fail_silently=False,
     ):
-        self.signer = Signer([SECRET_KEY])
+        self.signer = Signer()
         self.connection = Connection(EMAIL_APPENGINE_PROXY_URL)
         self.fix_sender = fix_sender
         self.fail_silently = fail_silently
@@ -83,8 +92,7 @@ class GmailProxy(object):
         }
         if self.fix_sender:
             values["fix_sender"] = "true"
-        data = urllib.parse.urlencode([(k, v) for k, v in values.items()])
-        status, errmsg = self.connection.make_request(data)
+        status, errmsg = self.connection.make_request(values)
 
         if status != 204 and not self.fail_silently:
             raise MessageSendingFailure(errmsg)

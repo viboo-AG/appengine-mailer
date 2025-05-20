@@ -1,6 +1,7 @@
 runtime: python311
 app_engine_apis: true
-
+env_variables:
+  GMAIL_SECRET_NAME: "pcaas__GMAIL_SECRET"
 handlers:
   - url: .*
     script: main.py
