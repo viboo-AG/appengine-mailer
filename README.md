@@ -19,3 +19,5 @@ From the root of the repo
 ```sh
 gcloud app deploy appengine_mailer/
 ```
+
+will deploy to the current GCP project set by `gcloud config set project`.
