@@ -8,15 +8,13 @@ from google.appengine.api.mail import (  # type:ignore[import-untyped]
     EmailMessage,
     InvalidSenderError,
 )
-from google.cloud.secretmanager_v1 import SecretManagerServiceClient
-from google.cloud.secretmanager_v1.types import AccessSecretVersionRequest
+
 
 from webapp2 import RequestHandler  # type:ignore[import-untyped]
 
-GMAIL_SECRET_NAME = (
-    f"projects/{os.environ['GOOGLE_CLOUD_PROJECT']}/"
-    f"secrets/{os.environ['GMAIL_SECRET_NAME']}/versions/latest"
-)
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger(__name__)
+
 
 DEFAULT_SENDER_DOMAIN = f"{os.environ['GOOGLE_CLOUD_PROJECT']}.appspotmail.com"
 DEFAULT_SENDER = "noreply@" + DEFAULT_SENDER_DOMAIN
@@ -136,12 +134,8 @@ class Mailer(object):
 
 class SendMail(RequestHandler):
     def __init__(self, *args, **kwargs):
-        self.GMAIL_SECRET_KEYS = [
-            SecretManagerServiceClient()
-            .access_secret_version(AccessSecretVersionRequest(name=GMAIL_SECRET_NAME))
-            .payload.data.decode()
-        ]
         super(SendMail, self).__init__(*args, **kwargs)
+        self.signer = Signer()
 
     def get(self):
         # Just so that we can pingdom it to see if it's up.
@@ -154,18 +148,18 @@ class SendMail(RequestHandler):
             msg: Message = email.parser.Parser().parsestr(msg_string)
             mailer = Mailer(fix_sender=fix_sender)
             mailer.send_message(msg)
-            logging.info("Sent message ok\n%s", msg)
+            log.info("Sent message ok\n%s", msg)
             self.error(204)
         except BadRequestError as e:
-            logging.error("Malformed request: %s", e.args[0])
+            log.error("Malformed request: %s", e.args[0])
             self.error(400)
             self.response.out.write(e.args[0])
         except BadMessageError as e:
-            logging.error("Failed to send message: %s", e.args[0])
+            log.error("Failed to send message: %s", e.args[0])
             self.error(400)
             self.response.out.write(e.args[0])
         except Exception as e:
-            logging.exception("Failed to process request")
+            log.exception("Failed to process request")
             self.error(500)
 
     def parse_args(self):
@@ -182,4 +176,4 @@ class SendMail(RequestHandler):
         return msg, fix_sender
 
     def check_signature(self, msg, signature: str):
-        return Signer(self.GMAIL_SECRET_KEYS).verify_signature(msg, signature)
+        return self.signer.verify_signature(msg, signature)

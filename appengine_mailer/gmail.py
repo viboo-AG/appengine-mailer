@@ -10,6 +10,13 @@ import optparse  # pylint: disable=deprecated-module
 import os
 import sys
 import requests
+from google.cloud.secretmanager_v1 import SecretManagerServiceClient
+from google.cloud.secretmanager_v1.types import AccessSecretVersionRequest
+
+GMAIL_SECRET_NAME = (
+    f"projects/{os.environ['GOOGLE_CLOUD_PROJECT']}/"
+    f"secrets/{os.environ['GMAIL_SECRET_NAME']}/versions/latest"
+)
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -20,20 +27,12 @@ class MessageSendingFailure(Exception):
 
 
 class Signer(object):
-    def __init__(self, SECRET_KEYS=None):
-        if not SECRET_KEYS:
-            try:
-                SECRET_KEYS = [os.environ["GMAIL_SECRET_KEY"]]
-            except KeyError:
-                try:
-                    SECRET_KEYS = [
-                        open("/etc/envdir/GMAIL_SECRET_KEY", encoding="utf-8")
-                        .readline()
-                        .rstrip()
-                    ]
-                except OSError as e:
-                    raise EnvironmentError("GMAIL_SECRET_KEY is not set.") from e
-        self.SECRET_KEYS = SECRET_KEYS
+    def __init__(self):
+        self.SECRET_KEYS = [
+            SecretManagerServiceClient()
+            .access_secret_version(AccessSecretVersionRequest(name=GMAIL_SECRET_NAME))
+            .payload.data.decode()
+        ]
 
     @staticmethod
     def sign(msg: str, key: str):
