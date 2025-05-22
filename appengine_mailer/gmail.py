@@ -28,29 +28,24 @@ class MessageSendingFailure(Exception):
 
 class Signer(object):
     def __init__(self):
-        self.SECRET_KEYS = [
+        self.secret_key = (
             SecretManagerServiceClient()
             .access_secret_version(AccessSecretVersionRequest(name=GMAIL_SECRET_NAME))
             .payload.data.decode()
-        ]
+        )
 
-    @staticmethod
-    def sign(msg: str, key: str):
+    def sign(self, msg: str):
         signature = base64.encodebytes(
-            hmac.new(bytes(key, "utf-8"), bytes(msg, "utf-8"), hashlib.sha1).digest()
+            hmac.new(
+                bytes(self.secret_key, "utf-8"), bytes(msg, "utf-8"), hashlib.sha1
+            ).digest()
         ).strip()
         log.debug(f"message: '{msg}'")
         log.debug(f"signature: '{signature!r}'")
         return signature
 
-    def generate_signature(self, msg: str):
-        return self.sign(msg, self.SECRET_KEYS[0])
-
-    def verify_signature(self, msg, signature: str):
-        for key in self.SECRET_KEYS:
-            if self.sign(msg, key) == bytes(signature, "utf-8"):
-                return True
-        return False
+    def verify_signature(self, msg: str, signature: str):
+        return self.sign(msg) == bytes(signature, "utf-8")
 
 
 class Connection(object):
@@ -87,7 +82,7 @@ class GmailProxy(object):
     def send_mail(self, msg):
         values = {
             "msg": msg.as_string(),
-            "signature": self.signer.generate_signature(msg.as_string()),
+            "signature": self.signer.sign(msg.as_string()),
         }
         if self.fix_sender:
             values["fix_sender"] = "true"
