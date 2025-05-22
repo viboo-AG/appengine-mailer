@@ -1,5 +1,6 @@
 from email.message import Message
 import email.parser
+import email.utils
 import logging
 import os
 from gmail import Signer
@@ -17,7 +18,8 @@ GMAIL_SECRET_NAME = (
     f"secrets/{os.environ['GMAIL_SECRET_NAME']}/versions/latest"
 )
 
-DEFAULT_SENDER = f"noreply@{os.environ['GOOGLE_CLOUD_PROJECT']}.appspotmail.com"
+DEFAULT_SENDER_DOMAIN = f"{os.environ['GOOGLE_CLOUD_PROJECT']}.appspotmail.com"
+DEFAULT_SENDER = "noreply@" + DEFAULT_SENDER_DOMAIN
 
 suffixes = dict(
     line.split()[:2]
@@ -35,8 +37,7 @@ class BadMessageError(ValueError):
 
 
 class Mailer(object):
-    def __init__(self, default_sender=DEFAULT_SENDER, fix_sender=False):
-        self.default_sender = default_sender
+    def __init__(self, fix_sender=False):
         self.fix_sender = fix_sender
 
     def send_message(self, msg: Message):
@@ -49,7 +50,7 @@ class Mailer(object):
                 raise BadMessageError(
                     "Unauthorized message sender '%s'" % message.sender
                 ) from e
-        message.sender = self.default_sender
+        message.sender = DEFAULT_SENDER
         try:
             message.send()
         except InvalidSenderError as e:
@@ -71,16 +72,22 @@ class Mailer(object):
         return filename
 
     def translate_message(self, msg: Message):
-        sender = msg["From"] or DEFAULT_SENDER
+        sender = msg["From"]
         if not sender:
             if self.fix_sender:
-                sender = self.default_sender
+                sender = DEFAULT_SENDER
             else:
                 raise BadMessageError("No sender specified")
+        else:
+            realname, address = email.utils.parseaddr(sender)
+            if not "@" in address:
+                address += "@" + DEFAULT_SENDER_DOMAIN
+            sender = email.utils.formataddr((realname, address))
+
         to = msg["To"]
         if not to:
             raise BadMessageError("No destination addresses specified")
-        message = EmailMessage(sender=sender or msg["From"], to=to)
+        message = EmailMessage(sender=sender, to=to)
         # Go through all the headers which Google will let us use
         cc = msg["Cc"]
         if cc:
