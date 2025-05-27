@@ -6,130 +6,27 @@ import os
 from gmail import Signer
 from google.appengine.api.mail import (  # type:ignore[import-untyped]
     EmailMessage,
-    InvalidSenderError,
 )
-
-
+from google.appengine.api.mail_errors import InvalidSenderError
 from webapp2 import RequestHandler  # type:ignore[import-untyped]
+from webob import exc
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
 DEFAULT_SENDER_DOMAIN = f"{os.environ['GOOGLE_CLOUD_PROJECT']}.appspotmail.com"
 DEFAULT_SENDER = "noreply@" + DEFAULT_SENDER_DOMAIN
 
-suffixes = dict(
-    line.split()[:2]
-    for line in open("google.mime.types", encoding="utf-8")
-    if not line.startswith("#")
-)
+
+class BadRequestError(exc.HTTPBadRequest):
+    def __init__(self, message):
+        super(BadRequestError, self).__init__("Malformed request: " + message)
 
 
-class BadRequestError(ValueError):
-    pass
-
-
-class BadMessageError(ValueError):
-    pass
-
-
-class Mailer(object):
-    def __init__(self, fix_sender=False):
-        self.fix_sender = fix_sender
-
-    def send_message(self, msg: Message):
-        message = self.translate_message(msg)
-        try:
-            message.send()
-            return
-        except InvalidSenderError as e:
-            if not self.fix_sender:
-                raise BadMessageError(
-                    "Unauthorized message sender '%s'" % message.sender
-                ) from e
-        message.sender = DEFAULT_SENDER
-        try:
-            message.send()
-        except InvalidSenderError as e:
-            raise BadMessageError(
-                "Unauthorized default message sender '%s'" % message.sender
-            ) from e
-
-    @staticmethod
-    def get_filename(part):
-        filename = part.get_filename()
-        if not filename:
-            content_type = part.get_content_type()
-            try:
-                filename = "file.%s" % suffixes[content_type]
-            except KeyError as e:
-                raise BadMessageError(
-                    "Google won't let us send content of type '%s'" % content_type
-                ) from e
-        return filename
-
-    def translate_message(self, msg: Message):
-        sender = msg["From"]
-        if not sender:
-            if self.fix_sender:
-                sender = DEFAULT_SENDER
-            else:
-                raise BadMessageError("No sender specified")
-        else:
-            realname, address = email.utils.parseaddr(sender)
-            if not "@" in address:
-                address += "@" + DEFAULT_SENDER_DOMAIN
-            sender = email.utils.formataddr((realname, address))
-
-        to = msg["To"]
-        if not to:
-            raise BadMessageError("No destination addresses specified")
-        message = EmailMessage(sender=sender, to=to)
-        # Go through all the headers which Google will let us use
-        cc = msg["Cc"]
-        if cc:
-            message.cc = cc
-        bcc = msg["Bcc"]
-        if bcc:
-            message.bcc = cc
-        reply_to = msg["Reply-To"]
-        if reply_to:
-            message.reply_to = reply_to
-        subject = msg["Subject"]
-        if subject:
-            message.subject = subject
-
-        # If there's just a plain text body, use that, otherwise
-        # iterate over all the attachments
-        payload = msg.get_payload(decode=True)
-        if isinstance(payload, str):
-            message.body = payload
-        else:
-            body = ""
-            html = ""
-            attachments = []
-            # GAE demands we specify the body explicitly - we use the first text/plain attachment we find.
-            # Similarly, we pull in the first html we find and use that for message.html
-            # We pull in any other attachments we find; but we ignore the multipart structure,
-            # because GAE doesn't give us enough control there.
-            for part in msg.walk():
-                if part.get_content_type() == "text/plain" and not body:
-                    body = part.get_payload(decode=True)
-                elif part.get_content_type() == "text/html" and not html:
-                    html = part.get_payload(decode=True)
-                elif not part.get_content_type().startswith("multipart"):
-                    attachments.append(
-                        (part.get_filename(), part.get_payload(decode=True))
-                    )
-            if not body:
-                raise BadMessageError("No message body specified")
-            message.body = body
-            if html:
-                message.html = html
-            if attachments:
-                message.attachments = attachments
-        return message
+class BadMessageError(exc.HTTPBadRequest):
+    def __init__(self, message):
+        super(BadMessageError, self).__init__("Failed to send message: " + message)
 
 
 class SendMail(RequestHandler):
@@ -142,25 +39,22 @@ class SendMail(RequestHandler):
         return
 
     def post(self):
-        assert self.response
+        msg_string, fix_sender = self.parse_args()
+        msg: Message = email.parser.Parser().parsestr(msg_string)
+
+        api_msg = self.translate_message(msg, fix_sender)
+        api_msg.check_initialized()
         try:
-            msg_string, fix_sender = self.parse_args()
-            msg: Message = email.parser.Parser().parsestr(msg_string)
-            mailer = Mailer(fix_sender=fix_sender)
-            mailer.send_message(msg)
-            log.info("Sent message ok\n%s", msg)
-            self.error(204)
-        except BadRequestError as e:
-            log.error("Malformed request: %s", e.args[0])
-            self.error(400)
-            self.response.out.write(e.args[0])
-        except BadMessageError as e:
-            log.error("Failed to send message: %s", e.args[0])
-            self.error(400)
-            self.response.out.write(e.args[0])
-        except Exception as e:
-            log.exception("Failed to process request")
-            self.error(500)
+            api_msg.send()
+        except InvalidSenderError:
+            if fix_sender:
+                log.warning("Invalid sender, fixing to %s", DEFAULT_SENDER)
+                api_msg.sender = DEFAULT_SENDER
+                api_msg.send()
+            else:
+                raise
+        log.info("Sent message ok")
+        log.debug("Sent message: %s", msg)
 
     def parse_args(self):
         assert self.request
@@ -177,3 +71,29 @@ class SendMail(RequestHandler):
 
     def check_signature(self, msg, signature: str):
         return self.signer.verify_signature(msg, signature)
+
+    def translate_message(self, msg: Message, fix_sender: bool = False) -> EmailMessage:
+        sender = msg["From"]
+        if not sender:
+            if fix_sender:
+                msg["From"] = DEFAULT_SENDER
+            else:
+                raise BadMessageError("No sender specified")
+        else:
+            realname, address = email.utils.parseaddr(sender)
+            if "@" not in address:
+                sender_address = address
+                sender_domain = DEFAULT_SENDER_DOMAIN
+            else:
+                sender_address, sender_domain = address.split("@", 1)
+                if sender_domain.endswith("local"):
+                    sender_domain = DEFAULT_SENDER_DOMAIN
+            sender = email.utils.formataddr(
+                (realname, sender_address + "@" + sender_domain)
+            )
+            log.info("Using sender: %s", sender)
+            msg["From"] = sender
+
+        message = EmailMessage(mime_message=msg)
+
+        return message
