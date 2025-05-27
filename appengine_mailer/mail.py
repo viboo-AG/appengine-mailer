@@ -92,7 +92,6 @@ class SendMail(RequestHandler):
                 (realname, sender_address + "@" + sender_domain)
             )
         log.info("Using sender: %s", sender)
-        msg["From"] = sender
-        message = EmailMessage(mime_message=msg)
+        message = EmailMessage(sender=sender, mime_message=msg)
 
         return message
