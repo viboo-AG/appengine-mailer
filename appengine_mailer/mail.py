@@ -91,9 +91,8 @@ class SendMail(RequestHandler):
             sender = email.utils.formataddr(
                 (realname, sender_address + "@" + sender_domain)
             )
-            log.info("Using sender: %s", sender)
-            msg["From"] = sender
-
+        log.info("Using sender: %s", sender)
+        msg["From"] = sender
         message = EmailMessage(mime_message=msg)
 
         return message

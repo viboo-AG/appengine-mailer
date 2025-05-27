@@ -18,7 +18,7 @@ GMAIL_SECRET_NAME = (
     f"secrets/{os.environ['GMAIL_SECRET_NAME']}/versions/latest"
 )
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 
