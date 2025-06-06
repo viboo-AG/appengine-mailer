@@ -20,6 +20,8 @@ for i in $(seq 1 $2); do
     echo -n ${secret} | gcloud --project ${PROJECT_NAME} secrets versions add ${SECRET_NAME} --data-file=/dev/fd/0 
     gcloud app create --project ${PROJECT_NAME} --region ${REGION} || echo "App Engine already created for ${PROJECT_NAME}"
     gcloud projects add-iam-policy-binding ${PROJECT_NAME} --member=${service_account_name} --role=roles/storage.admin
+    gcloud projects add-iam-policy-binding ${PROJECT_NAME} --member=${service_account_name} --role=roles/artifactregistry.createOnPushWriter
     gcloud --project ${PROJECT_NAME} secrets add-iam-policy-binding ${SECRET_NAME} --member=${service_account_name} --role=roles/secretmanager.secretAccessor
+    sleep 120 # Wait for IAM policies to propagate
     gcloud --quiet --project ${PROJECT_NAME} app deploy appengine_mailer
 done

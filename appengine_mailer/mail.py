@@ -74,6 +74,7 @@ class SendMail(RequestHandler):
 
     def translate_message(self, msg: Message, fix_sender: bool = False) -> EmailMessage:
         sender = msg["From"]
+        log.info("Received sender: %s", sender)
         if not sender:
             if fix_sender:
                 msg["From"] = DEFAULT_SENDER
